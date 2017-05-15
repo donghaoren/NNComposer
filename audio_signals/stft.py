@@ -16,6 +16,7 @@ class STFTTransform:
         self.window_size = window_size
         self.size = size
         self.noverlap = self.window_size - self.window_size / 16
+        self.window_advance = self.window_size - self.noverlap
 
     def transform(self, audio):
         """ Transform audio into STFT features.
