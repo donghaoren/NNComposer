@@ -87,6 +87,7 @@ def convertEncodedMessagesToMIDI(msgs, filename):
 
     for (note, velocity, pedal_value, dt) in msgs:
         time = int(mido.second2tick(dt, mid.ticks_per_beat, 500000))
+        if time < 0: time = 0
         if note == 0:
             track.append(Message('control_change', control=64, value = midiClamp(pedal_value * 127.0), time=time))
         else:
