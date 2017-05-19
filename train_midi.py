@@ -1,10 +1,9 @@
 import numpy as np
-import tensorflow as tf
-from keras.utils.data_utils import get_file
-from model import build_midi_model
-
+from model import build_midi_model_180_large
 import tensorflow as tf
 import keras.backend.tensorflow_backend as KTF
+from keras.callbacks import Callback
+import time
 
 def get_session():
     gpu_options = tf.GPUOptions(allow_growth = True)
@@ -12,23 +11,27 @@ def get_session():
 
 KTF.set_session(get_session())
 
-length = 512
+length = 180
+
+print("Build model...")
+    
+with tf.device("/gpu:1"):
+    nbatch = 64
+    maxlen = 64
+    model = build_midi_model_180_large(nbatch, maxlen)
 
 print('Loading data...')
 
-data = np.load("midi_rolls.npy")
+import pickle
+with open("data/midi_piano_rolls_dataset.pkl", "rb") as f:
+    data = pickle.load(f)
 
-print('Vectorization...')
-X = np.zeros((len(data) / 2, length), dtype=np.bool)
-for i in range(0, len(data), 2):
-    X[i / 2, data[i]] = 1
-    X[i / 2, data[i + 1]] = 1
-
+from midi_signals.midi import encodedMessageToVector
     
-with tf.device("/gpu:1"):
-    nbatch = 32
-    maxlen = 16
-    model = build_midi_model(nbatch, maxlen)
+print('Vectorization...')
+X = np.zeros((len(data), length), dtype=np.float32)
+for i in range(0, len(data)):
+    X[i,:] = encodedMessageToVector(data[i])
     
 import random
 def generateXYChunk(data, batch_size, chunk_length, time_steps, bins):
@@ -46,26 +49,73 @@ def generateXYChunk(data, batch_size, chunk_length, time_steps, bins):
             s += time_steps
     return X, Y
 
-from keras.callbacks import ModelCheckpoint
-XX_validation, YY_validation = generateXYChunk(X, nbatch, 4096, maxlen, length)
-checkpointer = ModelCheckpoint(filepath="midi-weights.hdf5", verbose=1, save_best_only=True)
+XX_validation, YY_validation = generateXYChunk(X, nbatch, 8192, maxlen, length)
 
 current_loss = 1e10
+last_checkpoint = None
 
 print('Training...')
 
-# model.load_weights("text.h5")
-for iii in range(0, 100000):
-    XXs, YYs = generateXYChunk(X, nbatch, 65536, maxlen, length)
-    print(XXs.shape, YYs.shape)
+file_prefix = "%d" % (int(time.time()))
+
+class ResetStatesCallback(Callback):
+    def __init__(self, max_len):
+        self.counter = 0
+        self.max_len = max_len
+
+    def on_batch_begin(self, batch, logs={}):
+        if self.counter % self.max_len == 0:
+            self.model.reset_states()
+        self.counter += 1
+
+learning_rate = 0.0001
+preamble = 16 * nbatch # feed through the first # of samples before training/testing
+
+load_checkpoint = "restart.h5"
+# load_checkpoint = None
+
+if load_checkpoint is not None:
+    model.load_weights(load_checkpoint)
+    last_checkpoint = load_checkpoint
     model.reset_states()
-    model.fit(XXs, YYs, batch_size=nbatch, epochs=iii+1, shuffle=False, verbose = 1, initial_epoch = iii)
-    
-    model.reset_states()
-    loss = model.evaluate(XX_validation, YY_validation, batch_size=nbatch)
-    
-    print "\n#### Epoch: %04d - Validation loss = %04.2f" % (iii, loss)
-    
-    if loss < current_loss:
-        model.save("midi_models/midi-%06d-%04.2f.h5" % (iii, loss))
-        current_loss = loss
+    model.evaluate(XX_validation[:preamble], YY_validation[:preamble], batch_size=nbatch, verbose=0)
+    current_loss = model.evaluate(XX_validation[preamble:], YY_validation[preamble:], batch_size=nbatch, verbose=0)
+    print "Loaded weights from %s: Learning rate = %.8f, Validation loss = %08.6f" % (load_checkpoint, learning_rate, current_loss)
+
+KTF.set_value(model.optimizer.lr, learning_rate)
+
+
+
+try:
+    for iii in range(0, 100000):
+        # train_length = min((iii + 1)  * nbatch, 65536)
+        train_length = 65536
+        
+        for repeat in range(max(1, 65536 / train_length)):
+            XXs, YYs = generateXYChunk(X, nbatch, train_length, maxlen, length)
+            
+            model.reset_states()
+            model.evaluate(XXs[:preamble], YYs[:preamble], batch_size=nbatch, verbose=0)
+            model.fit(XXs[preamble:], YYs[preamble:], batch_size=nbatch, epochs=1, shuffle=False, verbose=1, callbacks = [ResetStatesCallback(train_length)])
+
+        model.reset_states()
+        model.evaluate(XX_validation[:preamble], YY_validation[:preamble], batch_size=nbatch, verbose=0)
+        loss = model.evaluate(XX_validation[preamble:], YY_validation[preamble:], batch_size=nbatch, verbose=0)
+
+        print "\n#### Epoch: %04d - Learning rate = %.8f, Validation loss = %08.6f" % (iii, learning_rate, loss)
+
+        if loss < current_loss:
+            last_checkpoint = "midi_models_180_large/%s-midi-%06d-%08.6f.h5" % (file_prefix, iii, loss)
+            model.save(last_checkpoint)
+            current_loss = loss
+        elif last_checkpoint is not None:
+            print "Epoch failed, loss jumped too much!"
+            model.load_weights(last_checkpoint)
+            # Decay the learning rate.
+            learning_rate *= 0.8
+            KTF.set_value(model.optimizer.lr, learning_rate)
+
+except KeyboardInterrupt:
+    print "\n\n#### Training interrupted by user"
+    model.save(file_prefix + "-interrupted.h5")
+    print "Current model saved to train-interrupted.h5"

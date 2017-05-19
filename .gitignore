@@ -1,2 +1,9 @@
-*pyc
+*.pyc
+*.h5
+*.pkl
+*.npy
+*.mid
+*.wav
+*.m4a
+*.mp3
 audio/
