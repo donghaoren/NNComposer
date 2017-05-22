@@ -1,3 +1,18 @@
+import argparse
+
+parser = argparse.ArgumentParser(description='Create a dataset from MIDI files')
+
+parser.add_argument('modelName', type=unicode, help="the name of the model to use")
+parser.add_argument('trainName', type=unicode, help="the name of the training folder")
+parser.add_argument('dataset', type=unicode, help="the dataset to use (pkl file from prepare_midi.py)")
+parser.add_argument('--batchsize', type=int, help="the batch size (default 32)", default=32)
+parser.add_argument('--maxlength', type=int, help="the truncated back propagation length (default 32)", default=32)
+parser.add_argument('--lr', type=float, help="the learning rate (default 0.001)", default=0.001)
+parser.add_argument('--restart', type=unicode, help="restart from a checkpoint", default=None)
+parser.add_argument('--device', type=unicode, help="the device to use", default="/cpu:0")
+
+args = parser.parse_args()
+
 # Allow gpu memory growth
 from utils.gpu_config import tfSessionAllowGrowth
 tfSessionAllowGrowth()
@@ -15,31 +30,31 @@ from utils.file_manager import FileManagerFS
 
 fm = FileManagerFS("output")
 
-load_checkpoint = None
+load_checkpoint = args.restart
 
 
 # Which model to train
-model_name = "Layer5_1024_256_1024"
-train_name = "Layer5_1024_256_1024_Bach"
+model_name = args.modelName
+train_name = args.trainName
 
 # Load a checkpoint?
 # load_checkpoint = "old/1495333001-midi-000174-0.555144.h5"
 
 
 # Device to train the model
-device = "/gpu:0"
+device = args.device
 
 # Dataset
-dataset = "data/midi_bach_piano.pkl"
+dataset = args.dataset
 
 # Batch size (number of tracks in training/validation)
-nbatch = 64
+nbatch = args.batchsize
 
 # Length of each run, also the length of the truncated back propagation
-maxlen = 128
+maxlen = args.maxlength
 
 # Initial learning rate
-learning_rate = 0.001
+learning_rate = args.lr
 
 # Skip this number of samples before training / validation
 preamble = 16 * nbatch # feed through the first # of samples before training/testing
@@ -180,7 +195,7 @@ try:
             print "Epoch failed, loss jumped too much!"
             fm.loadModel(model, last_checkpoint)
             # Decay the learning rate.
-            learning_rate *= 0.8
+            learning_rate *= 0.5
             KTF.set_value(model.optimizer.lr, learning_rate)
 
 except KeyboardInterrupt:

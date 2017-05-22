@@ -14,6 +14,9 @@ parser.add_argument('--device', type=unicode, help="the Tensorflow device to use
 
 args = parser.parse_args()
 
+from utils.gpu_config import tfSessionAllowGrowth
+tfSessionAllowGrowth()
+
 import numpy as np
 import tensorflow as tf
 import random
