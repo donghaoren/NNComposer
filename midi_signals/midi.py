@@ -109,7 +109,10 @@ def generateDataset(root_directory, output_file = "midi_dataset.pkl"):
             path = os.path.join(root, f)
             if os.path.splitext(path)[1].lower() == ".mid":
                 print path
-                all_sequence += midi2Messages(path)
+                try:
+                    all_sequence += midi2Messages(path)
+                except:
+                    print "Could not read this file!"
 
     print "Writing output..."
     a1 = np.zeros((len(all_sequence),), np.int32)
