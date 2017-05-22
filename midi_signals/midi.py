@@ -102,6 +102,8 @@ def convertEncodedMessagesToMIDI(msgs, filename):
 def generateDataset(root_directory, output_file = "midi_dataset.pkl"):
     all_sequence = []
 
+    print "Reading MIDI files..."
+
     for root, dirs, files in os.walk(root_directory):
         for f in files:
             path = os.path.join(root, f)
@@ -110,9 +112,20 @@ def generateDataset(root_directory, output_file = "midi_dataset.pkl"):
                 all_sequence += midi2Messages(path)
 
     print "Writing output..."
+    a1 = np.zeros((len(all_sequence),), np.int32)
+    a2 = np.zeros((len(all_sequence),), np.float32)
+    a3 = np.zeros((len(all_sequence),), np.float32)
+    a4 = np.zeros((len(all_sequence),), np.float32)
+    i = 0
+    for item in all_sequence:
+        a1[i] = item[0]
+        a2[i] = item[1]
+        a3[i] = item[2]
+        a4[i] = item[3]
+        i += 1
 
     with open(output_file, "wb") as f:
-        pickle.dump(all_sequence, f)
+        pickle.dump([ a1, a2, a3, a4 ], f)
 
 def test(input_midi, output_midi):
     # This goes through the encoding / decoding process,
@@ -129,5 +142,4 @@ def test(input_midi, output_midi):
         ritems.append(v)
 
     convertEncodedMessagesToMIDI(ritems, output_midi)
-
 
