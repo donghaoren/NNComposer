@@ -15,15 +15,22 @@ from utils.file_manager import FileManagerFS
 
 fm = FileManagerFS("output")
 
+load_checkpoint = None
+
 
 # Which model to train
 model_name = "Layer5_1024_256_1024"
+train_name = "Layer5_1024_256_1024_Bach"
+
+# Load a checkpoint?
+# load_checkpoint = "old/1495333001-midi-000174-0.555144.h5"
+
 
 # Device to train the model
 device = "/gpu:0"
 
 # Dataset
-dataset = "data/midi_piano_rolls_dataset.pkl"
+dataset = "data/midi_bach_piano.pkl"
 
 # Batch size (number of tracks in training/validation)
 nbatch = 64
@@ -32,7 +39,7 @@ nbatch = 64
 maxlen = 128
 
 # Initial learning rate
-learning_rate = 0.00000001
+learning_rate = 0.001
 
 # Skip this number of samples before training / validation
 preamble = 16 * nbatch # feed through the first # of samples before training/testing
@@ -45,9 +52,6 @@ validation_timesteps = 8192
 
 # Reset model state every # batch
 reset_states_every = epoch_timesteps / nbatch
-
-load_checkpoint = None
-load_checkpoint = "old/1495333001-midi-000174-0.555144.h5"
 
 
 print "Build model..."
@@ -69,19 +73,20 @@ import pickle
 with open(dataset, "rb") as f:
     data = pickle.load(f)
 
-
 print "Vectorization..."
 
 if enable_doubleinput:
-    X = np.zeros((len(data) * 2, length), dtype=np.float32)
-    for i in range(0, len(data)):
-        X[i * 2,:] = encodedMessageToVector(data[i])
-        X[i * 2 + 1,:] = encodedMessageToVector(data[i])
+    X = np.zeros((len(data[0]) * 2, length), dtype=np.float32)
+    for i in range(0, len(data[0])):
+        t = (data[0][i], data[1][i], data[2][i], data[3][i])
+        X[i * 2,:] = encodedMessageToVector(t)
+        X[i * 2 + 1,:] = encodedMessageToVector(t)
     print "#### Using double slice input format"
 else:
-    X = np.zeros((len(data), length), dtype=np.float32)
-    for i in range(0, len(data)):
-        X[i,:] = encodedMessageToVector(data[i])
+    X = np.zeros((len(data[0]), length), dtype=np.float32)
+    for i in range(0, len(data[0])):
+        t = (data[0][i], data[1][i], data[2][i], data[3][i])
+        X[i,:] = encodedMessageToVector(t)
     print "#### Using single slice input format"
     
 def generateXYChunk(data, batch_size, chunk_length, time_steps, bins):
@@ -117,11 +122,13 @@ class ResetStatesCallback(Callback):
     def on_batch_begin(self, batch, logs={}):
         if self.counter % self.max_len == 0:
             self.model.reset_states()
-            print "state reset"
         self.counter += 1
 
 
+random.seed(0)
 XX_validation, YY_validation = generateXYChunk(X, nbatch, validation_timesteps, maxlen, length)
+
+random.seed(time.time())
 
 current_loss = 1e10
 last_checkpoint = None
@@ -165,7 +172,7 @@ try:
 
         if loss < current_loss:
             
-            last_checkpoint = fm.getCheckpointFile(model_name, session_timestamp, iii, loss)
+            last_checkpoint = fm.getCheckpointFile(train_name, session_timestamp, iii, loss)
             fm.saveModel(model, last_checkpoint)
             current_loss = loss
         elif last_checkpoint is not None:
@@ -179,6 +186,6 @@ try:
 except KeyboardInterrupt:
     
     print "\n\n#### Training interrupted by user"
-    filename = fm.getInterruptFile(model_name, session_timestamp, int(time.time()))
+    filename = fm.getInterruptFile(train_name, session_timestamp, int(time.time()))
     fm.saveModel(model, filename)
     print "Current model saved to %s" % filename

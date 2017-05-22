@@ -73,6 +73,6 @@ def sampleFromModel(model, start, predict_length = 4000, diversity = 1.0):
 
 somemsgs = midi2Messages(args.prefix)
 
-random.seed(args.seed)
+np.random.seed(args.seed)
 newmsgs, losses = sampleFromModel(model_predict, somemsgs[:args.prefixLength], args.composeLength, args.diversity)
 convertEncodedMessagesToMIDI(newmsgs, args.output)
