@@ -5,8 +5,8 @@ parser = argparse.ArgumentParser(description='Create a dataset from MIDI files')
 parser.add_argument('modelName', type=unicode, help="the name of the model to use")
 parser.add_argument('trainName', type=unicode, help="the name of the training folder")
 parser.add_argument('dataset', type=unicode, help="the dataset to use (pkl file from prepare_midi.py)")
-parser.add_argument('--batchsize', type=int, help="the batch size (default 32)", default=32)
-parser.add_argument('--maxlength', type=int, help="the truncated back propagation length (default 32)", default=32)
+parser.add_argument('--batchsize', type=int, help="the batch size (default 32)", default=64)
+parser.add_argument('--maxlength', type=int, help="the truncated back propagation length (default 32)", default=64)
 parser.add_argument('--lr', type=float, help="the learning rate (default 0.001)", default=0.001)
 parser.add_argument('--restart', type=unicode, help="restart from a checkpoint", default=None)
 parser.add_argument('--device', type=unicode, help="the device to use", default="/cpu:0")
@@ -108,8 +108,8 @@ def generateXYChunk(data, batch_size, chunk_length, time_steps, bins):
     X = np.zeros((chunk_length / time_steps * batch_size, time_steps, bins))
     if enable_doubleinput:
         Y = np.zeros((chunk_length / time_steps * batch_size, time_steps, bins + 1))
-        mask = [ 0, 1 ] * (time_steps / 2)
-        maskInv = [ 1, 0 ] * (time_steps / 2)
+        mask = [ 1, 0 ] * (time_steps / 2)
+        maskInv = [ 0, 1 ] * (time_steps / 2)
     else:
         Y = np.zeros((chunk_length / time_steps * batch_size, time_steps, bins))
     for i in range(batch_size):
@@ -120,7 +120,7 @@ def generateXYChunk(data, batch_size, chunk_length, time_steps, bins):
             
         for j in range(chunk_length / time_steps):
             X[i + j * batch_size,:,:] = data[s:s+time_steps,:]
-            Y[i + j * batch_size,:,0:180] = data[s+2:s+2+time_steps,:]
+            Y[i + j * batch_size,:,0:180] = data[s+1:s+1+time_steps,:]
             if enable_doubleinput:
                 Y[i + j * batch_size,:,180] = mask
                 X[i + j * batch_size,:,0] *= maskInv

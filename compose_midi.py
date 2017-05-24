@@ -37,45 +37,38 @@ def fixItem(item):
 
 def sampleFromModel(model, start, predict_length = 4000, diversity = 1.0):
     model.reset_states()
+    
+    last_note = start[0][0]
 
     seq = []
-    last_item = None
-    losses = []
-    last_item_p = None
 
-    for i in range(0, predict_length):
-        if i < len(start):
-            si = start[i]
-            if i > 0:
-                losses.append((
-                    -np.log(np.clip(last_item_p[si[0]], 1e-6, 1 - 1e-6)),
-                    np.abs(last_item[1] - si[1]),
-                    np.abs(last_item[2] - si[2]),
-                    np.abs(last_item[3] - si[3])
-                ))
-            last_item = si
-
-        seq.append(last_item)
-
-        x = encodedMessageToVector(last_item)
+    for i in range(1, predict_length):
+        x = np.zeros((180,))
+        x[3 + last_note] = 1
         p = model.predict(np.expand_dims(np.expand_dims(x, axis = 0), axis = 0), batch_size = 1).flatten()
-        pnotes = p[3:] * 1.0
-        note = sample(p[3:], diversity)
+        # p[0:3] is predicted last_note's velocity.
+        x[0:3] = p[0:3]
+        
+        if i - 1 < len(start):
+            x[2] = start[i - 1][1]
+            x[1] = start[i - 1][2]
+            x[0] = start[i - 1][3]
+        
+        last_item = ( last_note, float(x[2]), float(x[1]), float(x[0]) )
+        last_item = fixItem(last_item)
+        
+        seq.append(last_item)
+        
+        p = model.predict(np.expand_dims(np.expand_dims(x, axis = 0), axis = 0), batch_size = 1).flatten()
+        last_note = sample(p[3:], diversity)
+        
         if i < len(start):
-            note = last_item[0]
-        p *= 0
-        p[3:] = 0
-        p[3 + note] = 1
-        p = model.predict(np.expand_dims(np.expand_dims(p, axis = 0), axis = 0), batch_size = 1).flatten()
+            last_note = start[i][0]
 
-
-        last_item = fixItem( ( note, float(p[2]), float(p[1]), float(p[0]) ) )
-        last_item_p = pnotes
-
-    return seq, np.array(losses)
+    return seq
 
 somemsgs = midi2Messages(args.prefix)
 
 np.random.seed(args.seed)
-newmsgs, losses = sampleFromModel(model_predict, somemsgs[:args.prefixLength], args.composeLength, args.diversity)
+newmsgs = sampleFromModel(model_predict, somemsgs[:args.prefixLength], args.composeLength, args.diversity)
 convertEncodedMessagesToMIDI(newmsgs, args.output)
